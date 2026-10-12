@@ -95,7 +95,7 @@ class McDonaldMCPClient:
                 "params": {
                     "protocolVersion": self.protocol_version,
                     "capabilities": {},
-                    "clientInfo": {"name": "mcd-points-actuary", "version": "0.1.0"},
+                    "clientInfo": {"name": "mcd-points-calc", "version": "0.1.0"},
                 },
             }
         )

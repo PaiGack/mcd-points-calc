@@ -1,4 +1,4 @@
-# 🍟 麦麦积分精算师 (mcd-points-actuary)
+# 🍟 麦麦积分精算师 (mcd-points-calc)
 
 > 把「积分该抽奖还是该兑换」从**玄学**变成**算术**。
 
@@ -48,7 +48,7 @@
 
 ```bash
 git clone <本仓库地址>
-cd mcd-points-actuary
+cd mcd-points-calc
 # 可选：安装为命令
 pip install -e .
 ```
