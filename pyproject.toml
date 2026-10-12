@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcd-points-actuary"
+version = "0.1.0"
+description = "麦麦积分精算师 —— 用期望值告诉你积分该抽奖、该兑换，还是该留住"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+keywords = ["mcdonalds", "mcp", "points", "lottery", "skill"]
+dependencies = []
+
+[project.scripts]
+mcd-points-actuary = "points_actuary.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
