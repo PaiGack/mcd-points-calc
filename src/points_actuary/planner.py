@@ -2,10 +2,14 @@
 
 这一层负责「脏活」：不同工具返回的字段名可能变，这里做防御式解析，
 把外部不确定性挡在引擎之外。
+
+关键取舍：任何一个 MCP 工具失败都不应让整份报告崩溃。
+账户接口拿不到时，其余维度仍照常出报告，并把失败原因作为警告带出来。
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Optional
 
 from .engine import build_report
@@ -74,20 +78,19 @@ def parse_prizes(raw: Any) -> list[LotteryPrize]:
         )
         name = str(_pick(it, "name", "prizeName", "title", default="未知奖品"))
         is_thanks = bool(_pick(it, "isThanks", "is_thanks", default=False)) or "谢谢" in name
+        # 抽奖成本口径：以活动级配置为准；活动未声明时才退回奖品自带值。
+        # 与 engine.lottery_points_cost 的「取最大值」保持一致，避免低估成本。
+        prize_cost = _as_int(_pick(it, "pointsCost", "points_cost", default=0))
+        effective_cost = draw_cost or prize_cost
         prizes.append(
             LotteryPrize(
                 name=name,
                 value_cny=value,
                 probability=prob,
-                points_cost=_as_int(_pick(it, "pointsCost", "points_cost", default=draw_cost)),
+                points_cost=effective_cost,
                 is_thanks=is_thanks,
             )
         )
-    # 若奖品没带成本，统一用活动级成本兜底
-    if draw_cost:
-        prizes = [
-            LotteryPrize(p.name, p.value_cny, p.probability, draw_cost, p.is_thanks) for p in prizes
-        ]
     return prizes
 
 
@@ -124,13 +127,24 @@ def parse_products(raw: Any) -> list[MallProduct]:
     return products
 
 
-def analyze(client: Any) -> Report:
-    """主流程：拉三份数据，合成一份报告。
+@dataclass
+class GatherResult:
+    """拉取三份数据的结果：数据 + 失败原因（用于降级与告警）。"""
 
-    client 只要实现了 query_my_account / query_lottery_info / mall_points_products 三个方法即可，
-    方便测试时用假对象替换。
-    """
-    account = parse_account(client.query_my_account())
+    account: Account
+    prizes: list[LotteryPrize]
+    products: list[MallProduct]
+    account_error: Optional[str] = None
+
+
+def _gather(client: Any) -> GatherResult:
+    """分别拉取三份数据，每个工具独立兜底，绝不因单个失败而整体中断。"""
+    account_error: Optional[str] = None
+    try:
+        account = parse_account(client.query_my_account())
+    except Exception as exc:  # noqa: BLE001 - Token 失效/网络异常都应降级而非崩溃
+        account = Account(available_points=0)
+        account_error = f"积分账户读取失败（{exc}），账户相关结论暂不可用。"
 
     prizes: list[LotteryPrize] = []
     try:
@@ -144,7 +158,27 @@ def analyze(client: Any) -> Report:
     except Exception:  # noqa: BLE001 - 商城接口偶发不可用也可降级
         products = []
 
-    return build_report(account, prizes=prizes, products=products)
+    return GatherResult(account=account, prizes=prizes, products=products, account_error=account_error)
+
+
+def analyze(client: Any) -> Report:
+    """主流程：拉三份数据，合成一份报告。
+
+    client 只要实现了 query_my_account / query_lottery_info / mall_points_products 三个方法即可，
+    方便测试时用假对象替换。
+    """
+    data = _gather(client)
+
+    warnings: list[str] = []
+    if data.account_error:
+        warnings.append(data.account_error)
+
+    return build_report(
+        data.account,
+        prizes=data.prizes,
+        products=data.products,
+        extra_warnings=warnings,
+    )
 
 
 def run(client: Any) -> str:

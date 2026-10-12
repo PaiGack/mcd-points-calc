@@ -60,11 +60,15 @@ src/points_actuary/formatter.py     （翻译成人话）
 
 | 场景 | 处理 |
 |---|---|
-| `query-lottery-info` 报错（活动未开放） | `planner.analyze` 捕获异常，抽奖维度置空，其余照常出报告 |
+| `query-my-account` 报错（Token 失效/网络异常） | `planner._gather` 捕获异常，账户降级为「可用 0 分」，**其余维度照常出报告**；失败原因转为可读警告展示给用户 |
+| `query-lottery-info` 报错（活动未开放） | `planner._gather` 捕获异常，抽奖维度置空，其余照常出报告 |
 | `mall-points-products` 报错 | 同上，降级为「只有抽奖 vs 过期」的对比 |
+| 抽奖成本为 0 或缺失 | 不静默垫底：`engine.lottery_data_warnings` 输出可读提示，说明「性价比 0 不代表不划算」 |
+| 奖池价值全未知 | 输出「期望值恒为 0，结论仅供占位」提示 |
 | 401 Token 失效 | `mcp_client` 抛出可读错误：「MCP Token 无效或已过期，请重新申请」 |
 | 429 触发限流 | 客户端内置 ≥0.12s 调用间隔（约 500 次/分钟），并抛可读错误 |
 | 接口字段名变化 | `planner` 层多键名兜底解析，不让字段差异穿透到引擎 |
+| 协议版本变更 | `mcp_client` 默认 `2024-11-05`，可用环境变量 `MCD_MCP_PROTOCOL_VERSION` 覆盖（官方未锁定版本） |
 | 奖品价值未知 | 保守按 0 计，宁可信低不可信高 |
 
 ## 四、业务价值

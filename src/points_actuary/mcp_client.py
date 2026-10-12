@@ -15,6 +15,10 @@ from typing import Any, Optional
 
 MCP_ENDPOINT = "https://mcp.mcd.cn"
 TOKEN_ENV = "MCD_MCP_TOKEN"
+#: MCP 协议版本。官方文档未锁定版本，允许通过环境变量跟随服务端更新，
+#: 默认值仅为兜底，不代表官方固定要求。
+PROTOCOL_VERSION_ENV = "MCD_MCP_PROTOCOL_VERSION"
+DEFAULT_PROTOCOL_VERSION = "2024-11-05"
 _MIN_INTERVAL = 0.12  # 秒，约 500 次/分钟，留出安全余量
 
 
@@ -33,6 +37,9 @@ class McDonaldMCPClient:
                 "Token 申请见 https://open.mcd.cn/mcp"
             )
         self.endpoint = endpoint.rstrip("/")
+        self.protocol_version = (
+            os.environ.get(PROTOCOL_VERSION_ENV, "").strip() or DEFAULT_PROTOCOL_VERSION
+        )
         self._last_call = 0.0
         self._session_id: Optional[str] = None
         self._req_id = 0
@@ -86,7 +93,7 @@ class McDonaldMCPClient:
             {
                 "method": "initialize",
                 "params": {
-                    "protocolVersion": "2024-11-05",
+                    "protocolVersion": self.protocol_version,
                     "capabilities": {},
                     "clientInfo": {"name": "mcd-points-actuary", "version": "0.1.0"},
                 },

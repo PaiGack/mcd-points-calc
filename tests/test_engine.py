@@ -13,10 +13,15 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from points_actuary.engine import (  # noqa: E402
     build_report,
+    lottery_data_warnings,
     lottery_expected_value,
+    lottery_points_cost,
+    verdict_from_lottery,
     verdicts_from_mall,
 )
 from points_actuary.models import Account, LotteryPrize, MallProduct  # noqa: E402
+from points_actuary.planner import analyze, parse_prizes  # noqa: E402
+from points_actuary.formatter import format_report  # noqa: E402
 
 
 def test_ev_basic_weighting():
@@ -84,6 +89,91 @@ def test_points_at_risk_capped_by_available():
     acc = Account(available_points=100, expiring_points=999, expiring_days=3)
     assert acc.points_at_risk == 100
 
+
+
+# ---------- 回归：问题 1（账户接口失败不应崩报告） ----------
+
+class _FailingAccountClient:
+    """query_my_account 抛异常，其余接口正常。"""
+
+    def query_my_account(self):
+        raise RuntimeError("401 Token 无效")
+
+    def query_lottery_info(self):
+        return {"pointsCost": 50, "prizes": [{"name": "谢谢参与", "weight": 1, "valueCny": 0.0}]}
+
+    def mall_points_products(self):
+        return {"products": [{"name": "中杯可乐", "pointsPrice": 300, "valueCny": 9.0}]}
+
+
+def test_account_failure_does_not_crash_report():
+    report = analyze(_FailingAccountClient())
+    # 其余维度照常出报告
+    assert {v.action for v in report.verdicts} == {"mall", "lottery"}
+    assert report.best is not None
+    # 失败原因作为告警带出，且是给人看的话，不是裸 traceback
+    assert any("账户读取失败" in w for w in report.warnings)
+    text = format_report(report)
+    assert "Traceback" not in text
+    assert "账户读取失败" in text
+
+
+def test_account_failure_degrades_to_zero_points():
+    report = analyze(_FailingAccountClient())
+    assert report.account.available_points == 0
+
+
+# ---------- 回归：问题 2（抽奖成本口径统一） ----------
+
+def test_draw_cost_activity_overrides_prize_cost():
+    # 活动 cost=50，奖品自带 cost=80 -> 以活动为准，同池之间口径一致
+    raw = {"pointsCost": 50, "prizes": [{"name": "A", "weight": 1, "valueCny": 10, "pointsCost": 80}]}
+    prizes = parse_prizes(raw)
+    assert [p.points_cost for p in prizes] == [50]
+
+
+def test_draw_cost_falls_back_to_prize_cost_when_absent():
+    # 活动未声明 cost -> 退回奖品自带值
+    raw = {"prizes": [{"name": "A", "weight": 1, "valueCny": 10, "pointsCost": 80}]}
+    prizes = parse_prizes(raw)
+    assert [p.points_cost for p in prizes] == [80]
+
+
+def test_no_cost_underestimate_when_prize_declares_more():
+    # 活动 cost=50 / 奖品 cost=80，最终成本不应低于活动声明的 50（不低估）
+    raw = {"pointsCost": 50, "prizes": [{"name": "A", "weight": 1, "valueCny": 10, "pointsCost": 80}]}
+    prizes = parse_prizes(raw)
+    cost = lottery_points_cost(prizes)
+    assert cost == 50
+    assert cost >= 50
+
+
+# ---------- 回归：零成本抽奖不再静默垫底 ----------
+
+def test_zero_cost_lottery_emits_warning():
+    prizes = [LotteryPrize("谢谢参与", value_cny=0.0, probability=1.0, points_cost=0)]
+    v = verdict_from_lottery(prizes)
+    warns = lottery_data_warnings(prizes, v)
+    assert any("消耗积分为 0" in w for w in warns)
+
+
+def test_unknown_value_pool_emits_warning():
+    prizes = [LotteryPrize("神秘奖", value_cny=None, probability=1.0, points_cost=50)]
+    v = verdict_from_lottery(prizes)
+    warns = lottery_data_warnings(prizes, v)
+    assert any("期望值恒为 0" in w for w in warns)
+
+
+def test_normal_lottery_has_no_data_warning():
+    prizes = [LotteryPrize("大奖", value_cny=100.0, probability=0.01, points_cost=50)]
+    v = verdict_from_lottery(prizes)
+    assert lottery_data_warnings(prizes, v) == []
+
+
+def test_extra_warnings_are_propagated():
+    acc = Account(available_points=100)
+    report = build_report(acc, extra_warnings=["上游告警示例"])
+    assert "上游告警示例" in report.warnings
 
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
