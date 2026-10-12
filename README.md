@@ -65,6 +65,10 @@ export MCD_MCP_TOKEN="你的 Token"
 
 4. 在你的 MCP Client（WorkBuddy / Cursor / Cherry Studio 等）里导入 [`mcp-config.example.json`](./mcp-config.example.json)。
 
+> [`mcp-config.example.json`](./mcp-config.example.json) 是**脱敏**的配置模板，只含环境变量占位符 `${MCD_MCP_TOKEN}`，
+> 不含任何真实 Token。导入后请把占位符替换为你自己的 Token（或在客户端里读取同名环境变量）。
+> 该文件名与格式为大赛要求的**标准命名**，请勿改名。
+
 ## 使用示例
 
 **离线演示**（无需 Token，立刻看到产品形态）：
@@ -104,7 +108,8 @@ python tests/test_engine.py
 ├── README.md                   # 你正在看的
 ├── MCP_INTEGRATION.md          # 用了哪些 MCP Tool、怎么调
 ├── CONTEST_DECLARATION.md      # 参赛声明（官方原文，未改动）
-├── mcp-config.example.json     # 脱敏配置示例
+├── mcp-config.example.json     # 脱敏配置示例（大赛标准命名）
+├── workbuddy.md                # WorkBuddy 对话上下文（WorkBuddy 专项奖励要求）
 ├── src/points_actuary/
 │   ├── engine.py               # 期望值/性价比算法（纯函数）
 │   ├── models.py               # 领域模型
@@ -120,6 +125,8 @@ python tests/test_engine.py
 - 奖品价值为**估算的市场参考价**，非官方定价；结果**仅供参考**。
 - 抽奖不保底：期望为正也可能连抽不中，报告会明确提示风险。
 - 餐品、价格、库存以麦当劳官方渠道实时结果为准。
+- **降级不崩溃**：任一 MCP 工具失败（含账户接口 Token 失效）都不会中断报告，
+  失败维度会被跳过并以可读警告提示，其余结论照常给出。
 - 本项目为 2026 麦当劳程序员节创意开发大赛参赛作品，非麦当劳官方产品。
 
 ## License

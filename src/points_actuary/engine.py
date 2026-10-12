@@ -91,17 +91,39 @@ def verdict_expire_in_time(account: Account) -> Verdict | None:
     )
 
 
+def lottery_data_warnings(prizes: Sequence[LotteryPrize], verdict: Verdict) -> list[str]:
+    """抽奖数据异常时的可读提示，避免「静默垫底」被误读为「抽奖不划算」。
+
+    两种典型异常：
+    - 单次成本 <= 0：抽奖不需积分，性价比恒为 0，排序会垫底。
+    - 全部奖品价值未知或为 0：期望值恒为 0，结论没有信息量。
+    """
+    out: list[str] = []
+    cost = verdict.cost_points
+    if cost <= 0:
+        out.append(
+            "抽奖单次消耗积分为 0 或缺失，无法计算「每 100 积分回本」，"
+            "已按性价比 0 参与排序（不代表抽奖一定不划算）。"
+        )
+    known = [p for p in prizes if p.value_cny not in (None, 0)]
+    if not known:
+        out.append("奖池内所有奖品价值均未知或为 0，抽奖期望值恒为 0，该结论仅供占位。")
+    return out
+
+
 def build_report(
     account: Account,
     prizes: Sequence[LotteryPrize] = (),
     products: Iterable[MallProduct] = (),
+    extra_warnings: Sequence[str] = (),
 ) -> Report:
     """总编排：把账户、奖池、商城三份数据合成一份决策报告。
 
     只做算术和排序，不含任何主观「推荐话术」——话术交给 formatter。
+    extra_warnings 用于承接上游（如账户接口失败）带来的告警，避免信息丢失。
     """
     verdicts: list[Verdict] = []
-    warnings: list[str] = []
+    warnings: list[str] = list(extra_warnings)
 
     expire = verdict_expire_in_time(account)
     if expire:
@@ -119,6 +141,7 @@ def build_report(
             risk_note="抽奖不保底，方差大：期望为正也可能多次不中，别把急需的积分全押上。",
         )
         verdicts.append(lot)
+        warnings.extend(lottery_data_warnings(prizes, lot))
 
     # 排序：能花钱的先按性价比排，「什么都不做」永远垫底
     actionable = [v for v in verdicts if v.action != "expire"]
